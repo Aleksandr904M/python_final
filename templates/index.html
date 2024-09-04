@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ввод имени пользователя и пароля</title>
+</head>
+<body>
+    <h2>Введите имя пользователя и пароль</h2>
+    <form method="post">
+        <label for="user">Имя пользователя</label><br>
+        <input type="text" id="user" name="user"><br>
+        <label for="password">Пароль</label><br>
+        <input type="text" id="password" name="password"><br>
+        <a href="{{ url_for('login') }}"><button>Войти</button></a>
+    </form>
+</body>
+</html>

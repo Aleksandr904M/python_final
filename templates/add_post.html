@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <body>
+    <h2>Добавление нового пользователя</h2>
+    <form method="post">
+      <label for="user">Имя пользователя</label><br>
+      <input type="text" id="user" name="user"><br>
+      <label for="password">Пароль пользователя</label><br>
+      <textarea id="password" name="password"></textarea><br>
+      <input type="submit" value="Добавить">
+    </form>
+  <a href="{{ url_for('main_window') }}"><button>Отмена</button></a>
+  </body>
+</html>
