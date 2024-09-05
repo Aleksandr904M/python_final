@@ -4,6 +4,13 @@ from flask_jwt_extended import (JWTManager, create_access_token, jwt_required, g
 
 app = Flask(__name__)
 authorization = False
+current_drone = {
+    "id": None,
+    "model": None,
+    "manufactured": None
+}
+
+
 
 def get_db_connection():  # подключение к БД
     connect = sqlite3.connect('database.db')
@@ -39,11 +46,17 @@ def login():            # авторизация юзера на главной 
                 authorization = True         # авторизация пройдена
                 connect.close()
                 return render_template('main.html')
-    return render_template('index.html')     # возвращает из папки template файл index.html
+    return render_template('index.html')
 
-@app.route('/<int:drone_id>')   # в индексе целое число
-def get_drone(drone_id):         # получает данные по drone_id
+@app.route('/<int:drone_id>', methods=['GET', 'POST'])
+def get_drone(drone_id):         # получает данные по drone_id, выбирает дрон
     connect = get_db_connection()
+    if request.method == 'POST':
+        result  = dict(connect.execute('SELECT * FROM drones WHERE id = ?', (drone_id, )).fetchone())
+        current_drone["id"] = drone_id
+        current_drone["model"] = result.get("model")
+        current_drone["manufactured"] = result.get("manufactured")
+        return redirect(url_for('main_window'))
     # запрашивается из базы данных по айдишнику и берется одна строка функцией fetchone()
     drone = connect.execute('SELECT * FROM drones WHERE id = ?', (drone_id,)).fetchone()
     connect.close()
@@ -51,7 +64,7 @@ def get_drone(drone_id):         # получает данные по drone_id
     return render_template('post.html', drone=drone)
 
 @app.route('/new_user', methods=['GET', 'POST'])
-def new_post():
+def new_post():                    # POST создает нового юзера и записывает в таблицу
     if request.method == 'POST':
         user = request.form['user']
         password = request.form['password']
@@ -64,7 +77,7 @@ def new_post():
     return render_template('add_post.html')
 
 @app.route('/new_drone', methods=['GET', 'POST'])
-def new_drone():
+def new_drone():                   # POST создает нового дрона и записывает в таблицу
     if request.method == 'POST':
         model = request.form['model']
         manufactured = request.form['manufactured']
@@ -76,9 +89,18 @@ def new_drone():
         return redirect(url_for('main_window'))
     return render_template('add_drone.html')
 
+@app.route('/choice_drone', methods=['GET'])
+def choice_drone():                # печатает список дронов
+    conn = get_db_connection()
+    drones = conn.execute('SELECT * FROM drones').fetchall()
+    conn.close()
+    return render_template('choice_drone.html', drones=drones)
+
+
 @app.route('/main_window', methods=['GET', 'POST'])
-def main_window():
-    return render_template('main.html')
+def main_window():                 # главное окно
+
+    return render_template('main.html', current_drone=current_drone)
 
 with app.app_context():  # перед первым запросов к базе данных
     init_db()            # Инициализировать базу данных

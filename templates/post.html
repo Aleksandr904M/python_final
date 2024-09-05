@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{{ drone.drone }}</title>
+    <title>{{ drone.model }}</title>
 </head>
 <body>
-    <h1>{{ drone.model }}</h1>
-    <p>{{ drone.manufactured }}</p>
-    <a href="{{ url_for('main_window') }}">Назад в окно работы с дроном</a>
+    <h1>Параметры</h1>
+    <p>Модель дрона     - {{ drone.model }}</p>
+    <p>ID в базе данных - {{ drone.id }}</p>
+    <p>Производитель    - {{ drone.manufactured }}</p>
+    <form method="post">
+        <input type="submit" value="Выбрать">
+    </form>
+    <a href="{{ url_for('choice_drone') }}">Назад</a>
 </body>
 </html>

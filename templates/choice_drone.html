@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Выбор дрона</title>
+</head>
+<body>
+    <h2>Список дронов</h2>
+    <ul>
+        {% for drone in drones %}
+        <li><a href="{{ url_for('get_drone', drone_id=drone['id']) }}">{{ drone['model'] }}</a></li>
+        {% endfor %}
+    </ul>
+    <a href="{{ url_for('main_window') }}">Назад</a>
+</body>
+</html>
