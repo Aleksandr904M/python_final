@@ -1,16 +1,29 @@
-from flask import Flask, render_template, request, redirect, url_for
+import math
+import time
+from flask import Flask, render_template, request, redirect, url_for, jsonify
 import sqlite3
-from flask_jwt_extended import (JWTManager, create_access_token, jwt_required, get_jwt_identity)
+import requests
+from functools import wraps
+import logging
+from app_coordinates_od import *
+from app_object_detection import *
+from app_flight import *
 
+logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
 app = Flask(__name__)
 authorization = False
 current_drone = {
-    "id": None,
-    "model": None,
-    "manufactured": None
+    "id": "",
+    "model": "",
+    "manufactured": ""
 }
-
-
+data_from_drones = {
+    "start_lat": 0, "start_lon": 0,
+    "end_lat": 0, "end_lon": 0,
+    "step": 0,
+    "altitude": 0
+}
+coordinates = []
 
 def get_db_connection():  # подключение к БД
     connect = sqlite3.connect('database.db')
@@ -25,12 +38,14 @@ def init_db():
                     '(id INTEGER PRIMARY KEY AUTOINCREMENT, model TEXT NOT NULL, manufactured TEXT NOT NULL)')
     connect.close()
 
-def security(func):
-    def wrapper(*args, **kwargs):
+def login_required(func):   # декоратор для защиты, если пользователь не авторизован
+    @wraps(func)
+    def decorated_function(*args, **kwargs):
         global authorization
-        if authorization:
-            func(*args, **kwargs)
-    return wrapper()
+        if not authorization:
+            return redirect(url_for('login'))  # Перенаправляем на страницу логина, если не авторизован
+        return func(*args, **kwargs)
+    return decorated_function
 
 @app.route('/', methods=['GET', 'POST'])
 def login():            # авторизация юзера на главной странице
@@ -49,10 +64,11 @@ def login():            # авторизация юзера на главной 
     return render_template('index.html')
 
 @app.route('/<int:drone_id>', methods=['GET', 'POST'])
+@login_required
 def get_drone(drone_id):         # получает данные по drone_id, выбирает дрон
     connect = get_db_connection()
     if request.method == 'POST':
-        result  = dict(connect.execute('SELECT * FROM drones WHERE id = ?', (drone_id, )).fetchone())
+        result = dict(connect.execute('SELECT * FROM drones WHERE id = ?', (drone_id, )).fetchone())
         current_drone["id"] = drone_id
         current_drone["model"] = result.get("model")
         current_drone["manufactured"] = result.get("manufactured")
@@ -64,6 +80,7 @@ def get_drone(drone_id):         # получает данные по drone_id, 
     return render_template('post.html', drone=drone)
 
 @app.route('/new_user', methods=['GET', 'POST'])
+@login_required
 def new_post():                    # POST создает нового юзера и записывает в таблицу
     if request.method == 'POST':
         user = request.form['user']
@@ -77,6 +94,7 @@ def new_post():                    # POST создает нового юзера
     return render_template('add_post.html')
 
 @app.route('/new_drone', methods=['GET', 'POST'])
+@login_required
 def new_drone():                   # POST создает нового дрона и записывает в таблицу
     if request.method == 'POST':
         model = request.form['model']
@@ -90,20 +108,119 @@ def new_drone():                   # POST создает нового дрона
     return render_template('add_drone.html')
 
 @app.route('/choice_drone', methods=['GET'])
+@login_required
 def choice_drone():                # печатает список дронов
     conn = get_db_connection()
     drones = conn.execute('SELECT * FROM drones').fetchall()
     conn.close()
     return render_template('choice_drone.html', drones=drones)
 
+@app.route('/missions', methods=['GET', 'POST'])
+@login_required
+def missions():                    # окно миссий и ввод данных для полета
+    if request.method == 'POST':
+        try:
+            data_from_drones["start_lat"] = float(request.form['start_lat'])
+            data_from_drones["start_lon"] = float(request.form['start_lon'])
+            data_from_drones["end_lat"] = float(request.form['end_lat'])
+            data_from_drones["end_lon"] = float(request.form['end_lon'])
+            data_from_drones["step"] = float(request.form['step'])
+            data_from_drones["altitude"] = float(request.form["altitude"])
+        except Exception:
+            return redirect(url_for('error_value'))
+    return render_template('missions.html',
+                           current_drone=current_drone, data_from_drones=data_from_drones)
+
+@app.route('/mission_spiral', methods=['GET'])
+@login_required
+def mission_spiral():
+    for value in data_from_drones.values():
+        if not value:
+            return redirect(url_for('error_value'))
+    for value in current_drone.values():
+        if not value:
+            return redirect(url_for('error_value'))
+    else:
+        real_drone = AirSimAPI()
+        drone = DJIDroneProxy(real_drone)
+        #drone.connect()
+        #time.sleep(2)
+        drone.takeoff()
+        time.sleep(4)
+        data = spiral_search(drone, start_lat=data_from_drones["start_lat"], start_lon=data_from_drones["start_lon"],
+                  end_lat=data_from_drones["end_lat"], end_lon=data_from_drones["end_lon"],
+                  step=data_from_drones["step"], altitude=data_from_drones["altitude"])
+        # message_human = object_detection("jpg/man_in_forest2.jpg")
+        #human= [{"message": message_human}]
+        return render_template('message_human.html', data=data)
+
+@app.route('/error_value', methods=['GET',])
+@login_required
+def error_value():
+    return render_template('error_value.html')
+
+@app.route('/message_human', methods=['GET',])
+@login_required
+def message_human():
+    return render_template('message_human')
 
 @app.route('/main_window', methods=['GET', 'POST'])
+@login_required
 def main_window():                 # главное окно
-
     return render_template('main.html', current_drone=current_drone)
 
-with app.app_context():  # перед первым запросов к базе данных
+with app.app_context():  # перед первым запросом к базе данных
     init_db()            # Инициализировать базу данных
+
+def object_detection(photo):
+    obj = ObjectDetection()
+    img, detect_objects = obj.detect_objects(photo)
+    if detect_objects:
+        logging.info("Обнаружены объекты")
+        for odj in detect_objects:
+            logging.info(f"Класс: {odj["class"]}, вероятность {odj["confidence"]*100:.0f}, координаты {odj["coordinates"]}")
+            h_object = 1.70  # данные для расчета
+            altitude_drone = data_from_drones["altitude"]
+            theta_vertical = -30
+            theta_horizontal = 0
+            fov_vertical = 45
+            fov_horizontal = 60
+            w_image = img.shape[1]
+            h_image = img.shape[0]
+            x1, y1, x2, y2 = odj["coordinates"]
+
+            latitude_drone = 37.662941
+            longitude_drone = 55.732247
+            direction_drone = 80  # направление дрона
+
+            latitude_object, longitude_object = calc_coord(h_object, altitude_drone, theta_vertical,
+                                                           theta_horizontal, fov_vertical, fov_horizontal, w_image,
+                                                           h_image,
+                                                           x1, y1, x2, y2, latitude_drone, longitude_drone,
+                                                           direction_drone)
+            return f"Обнаружен человек в координате: {latitude_object:.4f}, {longitude_object:.4f}"
+
+def spiral_search(drone, start_lat, start_lon, end_lat, end_lon, step, altitude):
+    radius = 0
+    angle = 0
+    begin_lat = start_lat + (end_lat - start_lat) / 2
+    begin_lon = start_lon + (end_lon - start_lon) / 2
+
+    while radius <= (end_lon - start_lon) / 2:
+        radius += step
+        angle += math.pi / 180
+        x = math.sin(angle) * radius
+        y = math.cos(angle) * radius
+        lat_current = begin_lat + x
+        lon_current = begin_lon + y
+        # Используем паттерн Flyweight для управления координатами
+        coordinate = CoordinateFlyweight.get_coordinate(lat_current, lon_current)
+        coordinates.append(coordinate)
+        yield coordinate
+        # Управляем дроном через прокси
+        drone.global_position_control(lat=lat_current, lon=lon_current, alt=altitude)
+        # time.sleep(1)
+
 
 if __name__ == '__main__':
     app.run(debug=True)

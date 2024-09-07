@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Миссии</title>
+</head>
+    <body>
+        <p>Миссии для дрона - {{ current_drone }}</p>
+        <a href="{{ url_for('mission_spiral') }}"><button>Запуск поиска человека по спиральной траектории</button></a>
+        <form method="post">
+            <label>Нач координаты (lat, lon) &ensp;</label>
+            <label>Конечные координаты (lat, lon)</label><br>
+            <input type="text" id="start_lat" name="start_lat">
+            <input type="text" id="end_lat" name="end_lat"><br>
+            <input type="text" id="start_lon" name="start_lon">
+            <input type="text" id="end_lon" name="end_lon"><br>
+            <label for="step">Шаг (рекомендован 0.00005) &ensp; &ensp;</label>
+            <label for="altitude">Высота</label><br>
+            <input type="text" id="step" name="step">
+            <input type="text" id="altitude" name="altitude"><br>
+            <input type="submit" value="Сохранить данные">
+        </form>
+            <p>Начальные координаты - {{ data_from_drones.start_lat, data_from_drones.start_lon }}</p>
+            <p>Конечные координаты - {{ data_from_drones.end_lat, data_from_drones.end_lon }}</p>
+            <p>Шаг - {{ data_from_drones.step }}</p>
+            <p>Высота - {{ data_from_drones.altitude }}</p>
+        <div id="status" style="border: 1px solid #ccc; padding: 10px; width: 300px; height: 200px; overflow-y: scroll">
+        <p>Лог дрона: </p>
+         </div>
+        <a href="{{ url_for('main_window') }}">Назад</a>
+    </body>
+</html>

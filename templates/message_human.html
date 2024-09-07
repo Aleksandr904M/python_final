@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>JSON Data</title>
+     <base target="_blank">
+</head>
+<body>
+    <h3>Сообщение</h3>
+    <table>
+        <tbody>
+            {% for post in data %}
+                <tr>
+                    <td>{{ post.message }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</body>
+</html>
