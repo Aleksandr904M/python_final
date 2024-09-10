@@ -1,3 +1,4 @@
+"""Обнаружение объекта на изображении"""
 import torch
 import cv2
 
@@ -12,8 +13,8 @@ class ObjectDetection:
         model = torch.hub.load('ultralytics/yolov5', 'yolov5x', pretrained=True)
         return model
 
-    def detect_objects(self, image_path):  # путь до картинки
-        img = cv2.imread(image_path)       #считать картинку
+    def detect_objects(self, image_path):  # :param путь до картинки
+        img = cv2.imread(image_path)       # считать картинку
         if img is None:
             return
         results = self.__model(img)

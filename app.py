@@ -1,17 +1,17 @@
 import math
-import time
 from flask import Flask, render_template, request, redirect, url_for, jsonify
 import sqlite3
-import requests
 from functools import wraps
 import logging
+#import airsim
 from app_coordinates_od import *
 from app_object_detection import *
 from app_flight import *
 
+
 logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
 app = Flask(__name__)
-authorization = False
+authorization = True
 current_drone = {
     "id": "",
     "model": "",
@@ -141,18 +141,14 @@ def mission_spiral():
         if not value:
             return redirect(url_for('error_value'))
     else:
-        real_drone = AirSimAPI()
-        drone = DJIDroneProxy(real_drone)
-        #drone.connect()
-        #time.sleep(2)
-        drone.takeoff()
-        time.sleep(4)
-        data = spiral_search(drone, start_lat=data_from_drones["start_lat"], start_lon=data_from_drones["start_lon"],
+        drone_api = DroneAPIFactory.get_drone_api("AirSim")
+        client = airsim.MultirotorClient()
+        main_begin(client, drone_api)
+        logging.info(spiral_search(drone_api, start_lat=data_from_drones["start_lat"], start_lon=data_from_drones["start_lon"],
                   end_lat=data_from_drones["end_lat"], end_lon=data_from_drones["end_lon"],
-                  step=data_from_drones["step"], altitude=data_from_drones["altitude"])
-        # message_human = object_detection("jpg/man_in_forest2.jpg")
-        #human= [{"message": message_human}]
-        return render_template('message_human.html', data=data)
+                  step=data_from_drones["step"], altitude=data_from_drones["altitude"]))
+
+        return render_template('message_human.html', data="Миссия окончена")
 
 @app.route('/error_value', methods=['GET',])
 @login_required
@@ -172,7 +168,7 @@ def main_window():                 # главное окно
 with app.app_context():  # перед первым запросом к базе данных
     init_db()            # Инициализировать базу данных
 
-def object_detection(photo):
+def object_detection(photo, lat_current, lon_current):  # обнаружение объекта
     obj = ObjectDetection()
     img, detect_objects = obj.detect_objects(photo)
     if detect_objects:
@@ -189,8 +185,8 @@ def object_detection(photo):
             h_image = img.shape[0]
             x1, y1, x2, y2 = odj["coordinates"]
 
-            latitude_drone = 37.662941
-            longitude_drone = 55.732247
+            latitude_drone = lat_current
+            longitude_drone = lon_current
             direction_drone = 80  # направление дрона
 
             latitude_object, longitude_object = calc_coord(h_object, altitude_drone, theta_vertical,
@@ -200,7 +196,7 @@ def object_detection(photo):
                                                            direction_drone)
             return f"Обнаружен человек в координате: {latitude_object:.4f}, {longitude_object:.4f}"
 
-def spiral_search(drone, start_lat, start_lon, end_lat, end_lon, step, altitude):
+def spiral_search(drone, start_lat, start_lon, end_lat, end_lon, step, altitude):  # полет по спирали
     radius = 0
     angle = 0
     begin_lat = start_lat + (end_lat - start_lat) / 2
@@ -213,13 +209,34 @@ def spiral_search(drone, start_lat, start_lon, end_lat, end_lon, step, altitude)
         y = math.cos(angle) * radius
         lat_current = begin_lat + x
         lon_current = begin_lon + y
-        # Используем паттерн Flyweight для управления координатами
+        # паттерн Flyweight для управления координатами
         coordinate = CoordinateFlyweight.get_coordinate(lat_current, lon_current)
         coordinates.append(coordinate)
-        yield coordinate
-        # Управляем дроном через прокси
+        message_human = object_detection("jpg/man_in_forest.jpg", lat_current, lon_current)
+        if message_human:
+            yield message_human
+        yield message_human
         drone.global_position_control(lat=lat_current, lon=lon_current, alt=altitude)
-        # time.sleep(1)
+        time.sleep(3)
+    yield coordinate
+    # Возврат на исходную точку
+    drone.global_position_control(lat=start_lat, lon=start_lon, alt=altitude)
+    time.sleep(1)
+
+
+def main_begin(client, api):          # основной метод
+    client.confirmConnection()
+
+    client.enableApiControl(True)
+    client.armDisarm(True)
+
+def main_end(client, api):            # окончание полета
+    client.takeoffAsync().join()
+    asyncio.gather(
+        api.get_telemetry(client)
+    )
+    client.armDisarm(False)
+    client.enableApiControl(False)
 
 
 if __name__ == '__main__':
