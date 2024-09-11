@@ -3,7 +3,6 @@ from flask import Flask, render_template, request, redirect, url_for, jsonify
 import sqlite3
 from functools import wraps
 import logging
-#import airsim
 from app_coordinates_od import *
 from app_object_detection import *
 from app_flight import *
@@ -11,7 +10,7 @@ from app_flight import *
 
 logging.basicConfig(level=logging.INFO, format='%(name)s - %(levelname)s - %(message)s')
 app = Flask(__name__)
-authorization = True
+authorization = False
 current_drone = {
     "id": "",
     "model": "",
@@ -144,10 +143,10 @@ def mission_spiral():
         drone_api = DroneAPIFactory.get_drone_api("AirSim")
         client = airsim.MultirotorClient()
         main_begin(client, drone_api)
-        logging.info(spiral_search(drone_api, start_lat=data_from_drones["start_lat"], start_lon=data_from_drones["start_lon"],
-                  end_lat=data_from_drones["end_lat"], end_lon=data_from_drones["end_lon"],
-                  step=data_from_drones["step"], altitude=data_from_drones["altitude"]))
-
+        logging.info(spiral_search(drone_api, client, start_lat=data_from_drones["start_lat"],
+                                   start_lon=data_from_drones["start_lon"], end_lat=data_from_drones["end_lat"],
+                                   end_lon=data_from_drones["end_lon"], step=data_from_drones["step"],
+                                   altitude=data_from_drones["altitude"]))
         return render_template('message_human.html', data="Миссия окончена")
 
 @app.route('/error_value', methods=['GET',])
@@ -196,7 +195,7 @@ def object_detection(photo, lat_current, lon_current):  # обнаружение
                                                            direction_drone)
             return f"Обнаружен человек в координате: {latitude_object:.4f}, {longitude_object:.4f}"
 
-def spiral_search(drone, start_lat, start_lon, end_lat, end_lon, step, altitude):  # полет по спирали
+def spiral_search(drone, client, start_lat, start_lon, end_lat, end_lon, step, altitude):  # полет по спирали
     radius = 0
     angle = 0
     begin_lat = start_lat + (end_lat - start_lat) / 2
@@ -212,12 +211,14 @@ def spiral_search(drone, start_lat, start_lon, end_lat, end_lon, step, altitude)
         # паттерн Flyweight для управления координатами
         coordinate = CoordinateFlyweight.get_coordinate(lat_current, lon_current)
         coordinates.append(coordinate)
-        message_human = object_detection("jpg/man_in_forest.jpg", lat_current, lon_current)
+        # Запрос изображений с камеры дрона (0 - идентификатор камеры)
+        responses = client.simGetImages([airsim.ImageRequest("0", airsim.ImageType.Scene, False, False)])
+        message_human = object_detection("r", lat_current, lon_current)
         if message_human:
             yield message_human
         yield message_human
         drone.global_position_control(lat=lat_current, lon=lon_current, alt=altitude)
-        time.sleep(3)
+        time.sleep(5)
     yield coordinate
     # Возврат на исходную точку
     drone.global_position_control(lat=start_lat, lon=start_lon, alt=altitude)
